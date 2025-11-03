@@ -1,0 +1,106 @@
+# PIPELINE DEFINITION
+# Name: train-market-data
+# Inputs:
+#    dataset_X: system.Dataset
+#    dataset_y: system.Dataset
+# Outputs:
+#    model: system.Model
+components:
+  comp-train-market-data:
+    executorLabel: exec-train-market-data
+    inputDefinitions:
+      artifacts:
+        dataset_X:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        dataset_y:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-train-market-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_market_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn==1.7'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_market_data(\n    dataset_X: Input[Dataset],\n    dataset_y:\
+          \ Input[Dataset],\n    model: Output[Model]\n):\n    from sklearn.linear_model\
+          \ import LinearRegression\n    import pandas as pd\n    import pickle\n\n\
+          \    X_train = pd.read_csv(dataset_X.path + '.csv')\n    y_train = pd.read_csv(dataset_y.path\
+          \ + '.csv')\n\n    model_lr = LinearRegression()\n    model_lr.fit(X_train,\
+          \ y_train)\n    model.metadata['framework'] = 'LR'\n    file_name = model.path\
+          \ + f'.pkl'\n    with open(file_name, 'wb') as file:\n        pickle.dump(model_lr,\
+          \ file)\n\n"
+        image: python:3.13
+pipelineInfo:
+  name: train-market-data
+root:
+  dag:
+    outputs:
+      artifacts:
+        model:
+          artifactSelectors:
+          - outputArtifactKey: model
+            producerSubtask: train-market-data
+    tasks:
+      train-market-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-market-data
+        inputs:
+          artifacts:
+            dataset_X:
+              componentInputArtifact: dataset_X
+            dataset_y:
+              componentInputArtifact: dataset_y
+        taskInfo:
+          name: train-market-data
+  inputDefinitions:
+    artifacts:
+      dataset_X:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+      dataset_y:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+  outputDefinitions:
+    artifacts:
+      model:
+        artifactType:
+          schemaTitle: system.Model
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.14.6
