@@ -1,0 +1,137 @@
+# PIPELINE DEFINITION
+# Name: get-market-data
+# Inputs:
+#    ticker: str
+# Outputs:
+#    dataset_X_test: system.Dataset
+#    dataset_X_train: system.Dataset
+#    dataset_y_test: system.Dataset
+#    dataset_y_train: system.Dataset
+components:
+  comp-get-market-data:
+    executorLabel: exec-get-market-data
+    inputDefinitions:
+      parameters:
+        ticker:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        dataset_X_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        dataset_X_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        dataset_y_test:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        dataset_y_train:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-get-market-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - get_market_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'yfinance==0.2'\
+          \ 'scikit-learn==1.7'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef get_market_data(\n    ticker: str,\n    dataset_X_train: Output[Dataset],\n\
+          \    dataset_y_train: Output[Dataset],\n    dataset_X_test: Output[Dataset],\n\
+          \    dataset_y_test: Output[Dataset]\n):\n    import yfinance as yf\n  \
+          \  from sklearn.model_selection import train_test_split\n\n    df_market\
+          \ = yf.Ticker(\n        ticker=ticker\n    ).history(\n        period='max'\n\
+          \    ).reset_index()\n    df_market['SMA_50'] = df_market.Close.rolling(window=50).mean()\n\
+          \    df_market['SMA_200'] = df_market.Close.rolling(window=200).mean()\n\
+          \    df_market.dropna(inplace=True)\n    X = df_market[[\n        'Date',\
+          \ 'Open', 'High', 'Low', 'Volume', 'SMA_50', 'SMA_200'\n    ]]\n    y =\
+          \ df_market.Close\n    X_train, X_test, y_train, y_test = train_test_split(\n\
+          \        X,\n        y,\n        test_size=0.2,\n        random_state=42\n\
+          \    )\n    X_train.to_csv(dataset_X_train.path + '.csv', index=False)\n\
+          \    y_train.to_csv(dataset_y_train.path + '.csv', index=False)\n    X_test.to_csv(dataset_X_test.path\
+          \ + '.csv', index=False)\n    y_test.to_csv(dataset_y_test.path + '.csv',\
+          \ index=False)\n\n"
+        image: python:3.13
+pipelineInfo:
+  name: get-market-data
+root:
+  dag:
+    outputs:
+      artifacts:
+        dataset_X_test:
+          artifactSelectors:
+          - outputArtifactKey: dataset_X_test
+            producerSubtask: get-market-data
+        dataset_X_train:
+          artifactSelectors:
+          - outputArtifactKey: dataset_X_train
+            producerSubtask: get-market-data
+        dataset_y_test:
+          artifactSelectors:
+          - outputArtifactKey: dataset_y_test
+            producerSubtask: get-market-data
+        dataset_y_train:
+          artifactSelectors:
+          - outputArtifactKey: dataset_y_train
+            producerSubtask: get-market-data
+    tasks:
+      get-market-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-get-market-data
+        inputs:
+          parameters:
+            ticker:
+              componentInputParameter: ticker
+        taskInfo:
+          name: get-market-data
+  inputDefinitions:
+    parameters:
+      ticker:
+        parameterType: STRING
+  outputDefinitions:
+    artifacts:
+      dataset_X_test:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+      dataset_X_train:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+      dataset_y_test:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+      dataset_y_train:
+        artifactType:
+          schemaTitle: system.Dataset
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.14.6
